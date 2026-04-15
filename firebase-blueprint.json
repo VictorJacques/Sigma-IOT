@@ -1,0 +1,56 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user (Admin or Client)",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "client"] },
+        "locationId": { "type": "string", "description": "ID of the location assigned to the client" }
+      },
+      "required": ["email", "role"]
+    },
+    "Location": {
+      "title": "Location",
+      "description": "A client's site containing sensors",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "clientId": { "type": "string", "description": "User ID of the client" },
+        "description": { "type": "string" }
+      },
+      "required": ["name", "clientId"]
+    },
+    "Sensor": {
+      "title": "Sensor",
+      "description": "A physical sensor device in a location",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the sensor (e.g., Cisterna 1)" },
+        "locationId": { "type": "string" },
+        "sensorId": { "type": "string", "description": "Hardware ID used by the ESP32" },
+        "type": { "type": "string", "enum": ["cisterna", "caixa_agua"] }
+      },
+      "required": ["name", "locationId", "sensorId"]
+    },
+    "Telemetry": {
+      "title": "Telemetry",
+      "description": "Data sent from the ESP32 sensor",
+      "type": "object",
+      "properties": {
+        "locationId": { "type": "string", "description": "ID of the location this sensor belongs to" },
+        "sensorId": { "type": "string" },
+        "value": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["locationId", "sensorId", "value", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles and roles" },
+    "/locations/{locationId}": { "schema": "Location", "description": "Locations/Sites" },
+    "/sensors/{sensorId}": { "schema": "Sensor", "description": "Sensors in locations" },
+    "/telemetry/{docId}": { "schema": "Telemetry", "description": "Sensor readings" }
+  }
+}

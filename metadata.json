@@ -1,0 +1,6 @@
+{
+  "name": "Monitor de Cisterna Sigma IoT",
+  "description": "Monitoramento em tempo real do nível de água de cisternas e caixas d'água via ESP32.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

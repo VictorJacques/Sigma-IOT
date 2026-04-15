@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #F3F4F6;
+  --color-card: #FFFFFF;
+  --color-primary-blue: #3B82F6;
+  --color-text-main: #111827;
+  --color-text-muted: #6B7280;
+  --color-border-gray: #E5E7EB;
+  --color-success-green: #10B981;
+  
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-text-main font-sans;
+  }
+}
+
+.card-minimal {
+  @apply bg-card rounded-[24px] p-8 border border-border-gray shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)];
+}
+
+.label-minimal {
+  @apply text-[14px] uppercase tracking-[0.1em] text-text-muted mb-2 block font-bold;
+}
+
+.big-number-minimal {
+  @apply text-[100px] font-light tracking-[-4px] leading-none text-text-main;
+}

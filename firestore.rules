@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: email, role (admin/client), locationId
+    //
+    // Collection: locations
+    // Fields: name, clientId, description
+    //
+    // Collection: telemetry
+    // Fields: locationId, sensorId, value, timestamp
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             (request.auth.token.email == "victorjacques2207@gmail.com" || 
+              (exists(/databases/$(database)/documents/users/$(request.auth.token.email)) && 
+               get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'admin'));
+    }
+
+    function isClient() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.token.email)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'client';
+    }
+
+    function getUserLocationId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.locationId;
+    }
+
+    // Rules for Users
+    match /users/{email} {
+      allow get: if true; // Allow checking if an email is authorized for first access
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Rules for Locations
+    match /locations/{locationId} {
+      allow read: if isAdmin() || (isClient() && locationId == getUserLocationId());
+      allow write: if isAdmin();
+    }
+
+    // Rules for Sensors
+    match /sensors/{sensorId} {
+      allow read: if isAdmin() || (isClient() && resource.data.locationId == getUserLocationId());
+      allow write: if isAdmin();
+    }
+
+    // Rules for Telemetry
+    match /telemetry/{docId} {
+      // Allow ESP32 to create telemetry
+      allow create: if true; 
+      
+      // Allow Admin to read all, Client to read only their location
+      allow read: if isAdmin() || (isClient() && resource.data.locationId == getUserLocationId());
+      
+      allow update, delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
