@@ -109,8 +109,39 @@ export default function Dashboard() {
   const latestReading = telemetry[0];
   const lastUpdate = latestReading ? new Date(latestReading.timestamp) : null;
   
-  const sensorInfo = latestReading ? sensors.find(s => s.sensorId === latestReading.sensorId) : null;
-  const sensorDisplayName = sensorInfo ? sensorInfo.name : (latestReading?.sensorId || 'Aguardando...');
+  // Dynamic Sensor Discovery: Combi registered sensors with active telemetry sensor IDs
+  const activeSensorIds = Array.from(new Set(telemetry.map(t => t.sensorId))).filter(Boolean);
+  
+  // Track IDs we've already included to avoid duplicates
+  const includedIds = new Set();
+  const sensorsWithData: any[] = [];
+
+  // 1. Add registered sensors (and find their latest data)
+  sensors.forEach(sensor => {
+    const latestForSensor = telemetry.find(t => t.sensorId === sensor.sensorId);
+    sensorsWithData.push({
+      ...sensor,
+      latestValue: latestForSensor?.value || 0,
+      lastUpdate: latestForSensor?.timestamp || null
+    });
+    includedIds.add(sensor.sensorId);
+  });
+
+  // 2. Discover sensors that are sending data but aren't registered yet
+  activeSensorIds.forEach(sid => {
+    if (!includedIds.has(sid)) {
+      const latestForSensor = telemetry.find(t => t.sensorId === sid);
+      sensorsWithData.push({
+        id: `unregistered-${sid}`,
+        sensorId: sid,
+        name: `Sensor Novo (${sid})`,
+        latestValue: latestForSensor?.value || 0,
+        lastUpdate: latestForSensor?.timestamp || null,
+        isUnregistered: true
+      });
+      includedIds.add(sid);
+    }
+  });
 
   return (
     <div className="min-h-screen bg-bg flex flex-col font-sans">
@@ -125,27 +156,49 @@ export default function Dashboard() {
 
       <main className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 p-10">
         <div className="flex flex-col gap-6">
-          {/* Hero Stat Card */}
-          <div className="card-minimal flex items-center justify-between">
-            <div className="flex-1">
-              <span className="label-minimal">Volume Atual</span>
-              <div className="big-number-minimal">
-                {latestReading ? latestReading.value.toFixed(1) : '0.0'}
-                <span className="text-[40px] text-text-muted font-normal tracking-normal">%</span>
+          {/* Sensors Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {sensorsWithData.map((sensor) => (
+              <div key={sensor.id} className="card-minimal flex items-center justify-between p-8 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                <div className="flex-1">
+                  <div className="flex flex-col">
+                    <span className="label-minimal !mb-1">Nível {sensor.name}</span>
+                    <span className="text-[10px] font-bold text-text-muted mb-4">ID: {sensor.sensorId}</span>
+                  </div>
+                  
+                  <div className="big-number-minimal flex items-baseline gap-1">
+                    {sensor.latestValue.toFixed(1)}
+                    <span className="text-[32px] text-text-muted font-normal">%</span>
+                  </div>
+                  
+                  <div className="mt-6 flex items-center gap-2">
+                    <div className="px-2 py-0.5 bg-[#ECFDF5] text-success-green text-[9px] font-black rounded uppercase tracking-wider">
+                      Online
+                    </div>
+                    {sensor.isUnregistered && (
+                      <div className="px-2 py-0.5 bg-orange-50 text-orange-500 text-[9px] font-black rounded uppercase tracking-wider">
+                        Não Registrado
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="ml-6">
+                  <WaterLevel percentage={sensor.latestValue} />
+                </div>
               </div>
-              
-              <div className="mt-4">
-                <span className="text-xs font-bold text-primary-blue uppercase tracking-widest">{sensorDisplayName}</span>
+            ))}
+            {sensorsWithData.length === 0 && (
+              <div className="col-span-full card-minimal text-center py-12">
+                <p className="text-text-muted italic">Nenhum sensor encontrado para este local.</p>
               </div>
-            </div>
-            
-            <WaterLevel percentage={latestReading?.value || 0} />
+            )}
           </div>
 
           {/* History Chart Card */}
           <div className="card-minimal">
             <div className="flex justify-between items-center mb-6">
-              <span className="label-minimal !mb-0">Histórico de Nível</span>
+              <span className="label-minimal !mb-0">Histórico Combinado</span>
               <div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100">
                 {(['12h', '1d', '3d', '7d'] as const).map((range) => (
                   <button
@@ -162,33 +215,39 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
-            <HistoryChart data={telemetry} />
+            <HistoryChart data={telemetry} sensors={sensors} />
           </div>
         </div>
 
         <div className="flex flex-col gap-5">
           {/* Technical Details Card */}
           <div className="card-minimal !p-8">
-            <span className="label-minimal">Detalhes Técnicos</span>
-            <div className="flex justify-between py-3 border-b border-[#F3F4F6]">
-              <span className="text-[14px] text-text-muted">Sensor</span>
-              <span className="text-[14px] font-semibold text-text-main">{sensorDisplayName}</span>
+            <span className="label-minimal">Sensores Configurados</span>
+            <div className="space-y-3 mt-4">
+              {sensors.map(s => (
+                <div key={s.id} className="flex flex-col py-3 border-b border-[#F3F4F6] last:border-0">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[14px] font-semibold text-text-main">{s.name}</span>
+                    <span className="text-[10px] font-black text-primary-blue bg-blue-50 px-2 py-0.5 rounded uppercase">Ativo</span>
+                  </div>
+                  <span className="text-[11px] text-text-muted mt-1">ID: {s.sensorId}</span>
+                </div>
+              ))}
+              {sensors.length === 0 && (
+                <p className="text-[12px] text-text-muted italic">Nenhum sensor cadastrado.</p>
+              )}
             </div>
-            <div className="flex justify-between py-3 border-b border-[#F3F4F6]">
-              <span className="text-[14px] text-text-muted">ID Hardware</span>
-              <span className="text-[14px] font-semibold text-text-main">{latestReading?.sensorId || '--'}</span>
-            </div>
-            <div className="flex justify-between py-3 border-b border-[#F3F4F6]">
-              <span className="text-[14px] text-text-muted">Rede Wi-Fi</span>
-              <span className="text-[14px] font-semibold text-text-main">iPhone (Personal)</span>
-            </div>
-            <div className="flex justify-between py-3 border-b border-[#F3F4F6]">
-              <span className="text-[14px] text-text-muted">Sinal (RSSI)</span>
-              <span className="text-[14px] font-semibold text-text-main">-64 dBm</span>
-            </div>
-            <div className="flex justify-between py-3 border-b border-[#F3F4F6]">
-              <span className="text-[14px] text-text-muted">Database</span>
-              <span className="text-[14px] font-semibold text-text-main">Firestore (Cloud)</span>
+            
+            <div className="mt-8 pt-6 border-t border-[#F3F4F6]">
+              <span className="label-minimal">Rede e Conectividade</span>
+              <div className="flex justify-between py-2">
+                <span className="text-[12px] text-text-muted">Protocolo</span>
+                <span className="text-[12px] font-bold text-text-main">HTTPS/Firestore</span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-[12px] text-text-muted">Atualização</span>
+                <span className="text-[12px] font-bold text-text-main">Tempo Real</span>
+              </div>
             </div>
           </div>
 

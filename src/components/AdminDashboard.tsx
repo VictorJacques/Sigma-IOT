@@ -46,7 +46,7 @@ export default function AdminDashboard() {
     const ensureAdminDoc = async () => {
       if (auth.currentUser && auth.currentUser.email === "victorjacques2207@gmail.com") {
         try {
-          const adminDocRef = doc(db, 'users', auth.currentUser.uid);
+          const adminDocRef = doc(db, 'users', auth.currentUser.email!);
           const adminDoc = await getDoc(adminDocRef);
           if (!adminDoc.exists()) {
             await setDoc(adminDocRef, {
@@ -104,7 +104,7 @@ export default function AdminDashboard() {
       collection(db, 'telemetry'),
       where('locationId', '==', selectedLocation.id),
       orderBy('timestamp', 'desc'),
-      limit(50)
+      limit(200)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -218,9 +218,36 @@ export default function AdminDashboard() {
     }
   };
 
-  const latestLocationReading = locationTelemetry[0];
-  const latestSensor = sensors.find(s => s.sensorId === latestLocationReading?.sensorId);
-  const sensorDisplayName = latestSensor ? latestSensor.name : (latestLocationReading?.sensorId || 'Aguardando...');
+  let locationSensors: any[] = [];
+  if (selectedLocation) {
+    const activeSensorIdsFromTelemetry = Array.from(new Set(locationTelemetry.map(t => t.sensorId))).filter(Boolean);
+    const includedIdsAdmin = new Set();
+    
+    // 1. Registered sensors
+    sensors
+      .filter(s => s.locationId === selectedLocation.id)
+      .forEach(s => {
+        const latest = locationTelemetry.find(t => t.sensorId === s.sensorId);
+        locationSensors.push({ ...s, latestValue: latest?.value || 0 });
+        includedIdsAdmin.add(s.sensorId);
+      });
+
+    // 2. Discover from telemetry
+    activeSensorIdsFromTelemetry.forEach(sid => {
+      if (!includedIdsAdmin.has(sid)) {
+        const latestForSensor = locationTelemetry.find(t => t.sensorId === sid);
+        locationSensors.push({
+          id: `discovered-${sid}`,
+          sensorId: sid,
+          name: `Sensor Novo (${sid})`,
+          latestValue: latestForSensor?.value || 0,
+          lastUpdate: latestForSensor?.timestamp || null,
+          isUnregistered: true
+        });
+        includedIdsAdmin.add(sid);
+      }
+    });
+  }
 
   if (selectedLocation) {
     return (
@@ -276,46 +303,74 @@ export default function AdminDashboard() {
 
         <main className="p-10 max-w-7xl mx-auto w-full">
           {activeTab === 'dashboard' ? (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              {/* Real-time Visual */}
-              <div className="lg:col-span-5 card-minimal flex flex-col items-center justify-center">
-                <span className="label-minimal mb-8">Nível em Tempo Real</span>
-                <WaterLevel percentage={latestLocationReading?.value || 0} />
-                <div className="mt-8 text-center">
-                  <div className="text-4xl font-black text-primary-blue mb-1">
-                    {latestLocationReading ? latestLocationReading.value.toFixed(1) : '0.0'}%
+            <div className="flex flex-col gap-8">
+              {/* Sensors Grid - Real-time Visualization */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {locationSensors.map((sensor) => (
+                  <div key={sensor.id} className="card-minimal flex items-center justify-between p-8 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex-1">
+                      <div className="flex flex-col">
+                        <span className="label-minimal !mb-1">Nível {sensor.name}</span>
+                        <span className="text-[10px] font-bold text-text-muted mb-4">ID: {sensor.sensorId}</span>
+                      </div>
+                      
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-4xl font-black text-primary-blue">{sensor.latestValue.toFixed(1)}</span>
+                        <span className="text-xl text-text-muted font-normal">%</span>
+                      </div>
+                      
+                      <div className="mt-6 flex items-center gap-2">
+                        <div className="px-2 py-0.5 bg-blue-50 text-primary-blue text-[9px] font-black rounded uppercase tracking-wider">
+                          Ao Vivo
+                        </div>
+                        {sensor.isUnregistered && (
+                          <div className="px-2 py-0.5 bg-orange-50 text-orange-500 text-[9px] font-black rounded uppercase tracking-wider">
+                            Descoberto
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="ml-6">
+                      <WaterLevel percentage={sensor.latestValue} />
+                    </div>
                   </div>
-                  <p className="text-xs text-text-muted uppercase font-bold tracking-wider">
-                    {sensorDisplayName}
-                  </p>
-                </div>
+                ))}
+                {locationSensors.length === 0 && (
+                  <div className="col-span-full card-minimal flex flex-col items-center justify-center py-16">
+                    <Droplets className="w-12 h-12 text-gray-200 mb-4" />
+                    <p className="text-text-muted italic">Nenhum sensor cadastrado neste local.</p>
+                  </div>
+                )}
               </div>
 
-              {/* History & Clients */}
-              <div className="lg:col-span-7 flex flex-col gap-6">
-                <div className="card-minimal">
+              {/* History & Management */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* History Chart */}
+                <div className="lg:col-span-8 card-minimal">
                   <span className="label-minimal">Histórico do Local</span>
-                  <HistoryChart data={locationTelemetry} />
+                  <HistoryChart data={locationTelemetry} sensors={sensors} />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Sensor Management */}
+                {/* Management Column */}
+                <div className="lg:col-span-4 flex flex-col gap-6">
+                  {/* Sensor Management List */}
                   <div className="card-minimal">
                     <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                      <Activity className="w-5 h-5 text-primary-blue" /> Sensores do Local
+                      <Activity className="w-5 h-5 text-primary-blue" /> Gestão de Sensores
                     </h3>
-                    <div className="space-y-2 mb-6 max-h-40 overflow-y-auto pr-2">
-                        {sensors.filter(s => s.locationId === selectedLocation.id).map(s => (
+                    <div className="space-y-2 mb-6 max-h-48 overflow-y-auto pr-2">
+                        {locationSensors.map(s => (
                           <div key={s.id} className="p-3 bg-gray-50 rounded-xl text-sm border border-gray-100 flex justify-between items-center">
                             <div className="flex-1">
                               <p className="font-semibold text-text-main">{s.name}</p>
                               <p className="text-[10px] text-text-muted font-bold">ID: {s.sensorId}</p>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <div className="text-[10px] font-bold text-primary-blue bg-blue-50 px-2 py-1 rounded-md">
-                                {locationTelemetry.find(t => t.sensorId === s.sensorId)?.value.toFixed(1) || '0.0'}%
-                              </div>
-                              {deletingSensorId === s.id ? (
+                  <div className="flex items-center gap-3">
+                    <div className="text-[10px] font-bold text-primary-blue bg-blue-50 px-2 py-1 rounded-md">
+                      {s.latestValue.toFixed(1)}%
+                    </div>
+                    {deletingSensorId === s.id ? (
                                 <div className="flex gap-2">
                                   <button onClick={() => handleDeleteSensor(s.id)} className="text-[10px] font-bold text-red-600">Sim</button>
                                   <button onClick={() => setDeletingSensorId(null)} className="text-[10px] font-bold text-gray-500">Não</button>
@@ -328,7 +383,7 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                         ))}
-                      {sensors.filter(s => s.locationId === selectedLocation.id).length === 0 && (
+                      {locationSensors.length === 0 && (
                         <p className="text-sm text-text-muted italic">Nenhum sensor cadastrado.</p>
                       )}
                     </div>
@@ -353,62 +408,37 @@ export default function AdminDashboard() {
                       </button>
                     </form>
                   </div>
-
-                  <div className="flex flex-col gap-6">
-                    <div className="card-minimal">
-                      <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                        <Users className="w-5 h-5 text-primary-blue" /> Clientes do Local
-                      </h3>
-                      <div className="space-y-2 max-h-32 overflow-y-auto pr-2">
-                        {users.filter(u => u.locationId === selectedLocation.id).map(u => (
-                          <div key={u.id} className="p-3 bg-gray-50 rounded-xl text-sm border border-gray-100 flex justify-between items-center">
-                            <p className="font-semibold text-text-main truncate mr-2">{u.email}</p>
-                            {deletingUserId === u.id ? (
-                              <div className="flex gap-2">
-                                <button 
-                                  onClick={() => handleDeleteUser(u.id)}
-                                  className="text-[10px] font-bold text-red-600 hover:underline"
-                                >
-                                  Sim
-                                </button>
-                                <button 
-                                  onClick={() => setDeletingUserId(null)}
-                                  className="text-[10px] font-bold text-gray-500 hover:underline"
-                                >
-                                  Não
-                                </button>
-                              </div>
-                            ) : (
-                              <button 
-                                onClick={() => setDeletingUserId(u.id)}
-                                className="text-gray-300 hover:text-red-500 transition-colors"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                        {users.filter(u => u.locationId === selectedLocation.id).length === 0 && (
-                          <p className="text-sm text-text-muted italic">Nenhum cliente vinculado.</p>
-                        )}
-                      </div>
+                  
+                  {/* Clients Management */}
+                  <div className="card-minimal">
+                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                      <Users className="w-5 h-5 text-primary-blue" /> Clientes Vinculados
+                    </h3>
+                    <div className="space-y-2 max-h-32 overflow-y-auto pr-2 mb-4">
+                      {users.filter(u => u.locationId === selectedLocation.id).map(u => (
+                        <div key={u.id} className="p-3 bg-gray-50 rounded-xl text-sm border border-gray-100 flex justify-between items-center">
+                          <p className="font-semibold text-text-main truncate mr-2">{u.email}</p>
+                          <button 
+                            onClick={() => setDeletingUserId(u.id)}
+                            className="text-gray-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
-
-                    <div className="card-minimal">
-                      <h3 className="text-lg font-bold mb-4">Adicionar Cliente</h3>
-                      <form onSubmit={handleCreateClient} className="space-y-3">
-                        <input 
-                          type="email" 
-                          value={newClientEmail}
-                          onChange={(e) => setNewClientEmail(e.target.value)}
-                          placeholder="Email do novo cliente"
-                          className="w-full bg-gray-50 border border-border-gray rounded-xl px-4 py-2 text-sm focus:outline-none"
-                        />
-                        <button type="submit" className="w-full bg-primary-blue text-white font-bold py-2 rounded-xl text-sm shadow-md shadow-blue-100">
-                          Vincular Email
-                        </button>
-                      </form>
-                    </div>
+                    <form onSubmit={handleCreateClient} className="space-y-3 pt-4 border-t border-gray-100">
+                      <input 
+                        type="email" 
+                        value={newClientEmail}
+                        onChange={(e) => setNewClientEmail(e.target.value)}
+                        placeholder="Email do novo cliente"
+                        className="w-full bg-gray-50 border border-border-gray rounded-xl px-4 py-2 text-sm focus:outline-none"
+                      />
+                      <button type="submit" className="w-full bg-primary-blue text-white font-bold py-2 rounded-xl text-sm shadow-md shadow-blue-100">
+                        Vincular Email
+                      </button>
+                    </form>
                   </div>
                 </div>
               </div>
@@ -522,7 +552,9 @@ export default function AdminDashboard() {
                     </div>
                     <div>
                       <p className="font-bold text-gray-900">Local: {locations.find(l => l.id === t.locationId)?.name || 'Desconhecido'}</p>
-                      <p className="text-xs text-text-muted">Sensor: {t.sensorId}</p>
+                      <p className="text-xs text-text-muted">
+                        Sensor: {sensors.find(s => s.sensorId === t.sensorId)?.name || t.sensorId}
+                      </p>
                     </div>
                   </div>
                   <span className="text-[10px] font-bold text-gray-400 uppercase">
