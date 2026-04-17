@@ -24,6 +24,7 @@ export default function AdminDashboard() {
   const [telemetry, setTelemetry] = useState<any[]>([]);
   const [newLocationName, setNewLocationName] = useState('');
   const [newClientEmail, setNewClientEmail] = useState('');
+  const [newAdminEmail, setNewAdminEmail] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'logs'>('dashboard');
   const [locationTelemetry, setLocationTelemetry] = useState<any[]>([]);
@@ -182,6 +183,24 @@ export default function AdminDashboard() {
       setNotification({ message: "Email vinculado com sucesso!", type: 'success' });
     } catch (err) {
       console.error("Error creating client record:", err);
+    }
+  };
+
+  const handleCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminEmail) return;
+    try {
+      setNotification({ message: "Criando novo administrador...", type: 'info' });
+      await setDoc(doc(db, 'users', newAdminEmail), {
+        email: newAdminEmail,
+        role: 'admin',
+        createdAt: new Date().toISOString()
+      });
+      setNewAdminEmail('');
+      setNotification({ message: "Novo administrador adicionado!", type: 'success' });
+    } catch (err) {
+      console.error("Error creating admin record:", err);
+      setNotification({ message: "Erro ao criar administrador.", type: 'error' });
     }
   };
 
@@ -572,18 +591,63 @@ export default function AdminDashboard() {
             <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
               <Users className="text-primary-blue" /> Usuários do Sistema
             </h2>
+            
+            {/* Create Admin Form */}
+            <div className="mb-8 p-6 bg-blue-50/50 rounded-3xl border border-blue-100">
+              <h3 className="text-xs font-black text-primary-blue uppercase tracking-widest mb-4">Adicionar Novo Administrador</h3>
+              <form onSubmit={handleCreateAdmin} className="flex gap-2">
+                <input 
+                  type="email" 
+                  value={newAdminEmail}
+                  onChange={(e) => setNewAdminEmail(e.target.value)}
+                  placeholder="Email do novo Administrador"
+                  className="flex-1 bg-white border border-blue-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-blue/20"
+                />
+                <button type="submit" className="bg-primary-blue text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md shadow-blue-200 hover:bg-blue-700 transition-all">
+                  Adicionar
+                </button>
+              </form>
+              <p className="text-[10px] text-blue-500 mt-2 font-medium">CUIDADO: Administradores têm acesso total a todos os locais e sensores.</p>
+            </div>
+
             <div className="space-y-3">
               {users.map(u => (
                 <div key={u.id} className="p-4 bg-gray-50 rounded-2xl flex justify-between items-center border border-gray-100">
-                  <div>
-                    <p className="font-bold text-gray-900 text-sm">{u.email}</p>
-                    <p className="text-[10px] text-text-muted uppercase font-bold tracking-widest">
-                      {u.role} • {locations.find(l => l.id === u.locationId)?.name || 'Sem Local'}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-gray-900 text-sm truncate">{u.email}</p>
+                    <p className="text-[10px] text-text-muted uppercase font-bold tracking-widest flex items-center gap-1">
+                      <span className={`px-1.5 py-0.5 rounded ${u.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {u.role}
+                      </span> 
+                      • {locations.find(l => l.id === u.locationId)?.name || 'Sem Local'}
                     </p>
                   </div>
+                  {u.email !== auth.currentUser?.email && (
+                    <button 
+                      onClick={() => setDeletingUserId(u.id)}
+                      className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                      title="Remover Usuário"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
+            
+            {/* User Deletion Confirmation */}
+            {deletingUserId && (
+              <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl">
+                  <h3 className="text-lg font-black text-gray-900 mb-2 uppercase">Confirmar Remoção</h3>
+                  <p className="text-sm text-text-muted mb-6">Tem certeza que deseja remover este usuário do sistema?</p>
+                  <div className="flex gap-4">
+                    <button onClick={() => setDeletingUserId(null)} className="flex-1 py-3 bg-gray-100 rounded-2xl font-bold text-gray-600">Cancelar</button>
+                    <button onClick={() => handleDeleteUser(deletingUserId)} className="flex-1 py-3 bg-red-600 rounded-2xl font-bold text-white shadow-lg shadow-red-100">Remover</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       </main>
